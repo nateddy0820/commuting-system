@@ -18,10 +18,20 @@ export async function GET(req: Request) {
     const workerDoc = await db.collection("workers").doc(workerId).get();
     const worker = { id: workerId, ...workerDoc.data() };
 
-    type AttRecord = Record<string, unknown> & { id: string; date: string; worker: unknown };
-    const records: AttRecord[] = snap.docs
-      .map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>), worker }) as AttRecord)
-      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    const records = snap.docs
+      .map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          date: d.date as string,
+          checkIn: d.checkIn as string | null,
+          checkOut: d.checkOut as string | null,
+          workerId: d.workerId as string,
+          createdAt: d.createdAt as string,
+          worker,
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 30);
 
     return NextResponse.json(records);
@@ -41,7 +51,17 @@ export async function GET(req: Request) {
   );
 
   const records = snap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data(), worker: workerMap[doc.data().workerId] }))
+    .map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        date: d.date as string,
+        checkIn: d.checkIn as string | null,
+        checkOut: d.checkOut as string | null,
+        workerId: d.workerId as string,
+        worker: workerMap[d.workerId as string],
+      };
+    })
     .sort((a, b) => ((a.worker?.name as string) ?? "").localeCompare((b.worker?.name as string) ?? ""));
 
   return NextResponse.json(records);

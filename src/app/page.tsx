@@ -11,11 +11,11 @@ interface Worker {
 }
 
 interface AttendanceRecord {
-  id: number;
+  id: string;
   date: string;
   checkIn: string | null;
   checkOut: string | null;
-  workerId: number;
+  workerId: string;
 }
 
 export default function HomePage() {
@@ -29,9 +29,7 @@ export default function HomePage() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    fetch("/api/workers")
-      .then((r) => r.json())
-      .then(setWorkers);
+    fetch("/api/workers").then((r) => r.json()).then(setWorkers);
   }, []);
 
   useEffect(() => {
@@ -39,14 +37,24 @@ export default function HomePage() {
     return () => clearInterval(timer);
   }, []);
 
+  const currentWorker = workers.find((w) => w.id === selectedWorker);
+
+  // 전화번호 뒷 4자리 일치 여부
+  const phoneVerified =
+    phoneLast4.length === 4 &&
+    !!currentWorker &&
+    currentWorker.phone.replace(/-/g, "").endsWith(phoneLast4);
+
+  const phoneWrong = phoneLast4.length === 4 && !!currentWorker && !phoneVerified;
+
   useEffect(() => {
-    if (!selectedWorker || phoneLast4.length !== 4) {
+    if (!selectedWorker || !phoneVerified) {
       setRecord(null);
       return;
     }
     fetchRecord();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorker, phoneLast4]);
+  }, [selectedWorker, phoneVerified]);
 
   async function fetchRecord() {
     const res = await fetch(`/api/attendance?workerId=${selectedWorker}`);
@@ -57,15 +65,6 @@ export default function HomePage() {
   }
 
   async function handleAction(action: "checkin" | "checkout") {
-    if (!selectedWorker) {
-      setMessage({ text: "이름을 선택해주세요.", type: "error" });
-      return;
-    }
-    if (phoneLast4.length !== 4) {
-      setMessage({ text: "전화번호 뒷 4자리를 입력해주세요.", type: "error" });
-      return;
-    }
-
     setLoading(true);
     setMessage(null);
 
@@ -87,11 +86,8 @@ export default function HomePage() {
       text: action === "checkin" ? "출근되었습니다." : "퇴근되었습니다.",
       type: "success",
     });
-    setPhoneLast4("");
     fetchRecord();
   }
-
-  const currentWorker = workers.find((w) => w.id === selectedWorker);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -125,16 +121,14 @@ export default function HomePage() {
               value={selectedWorker}
               onChange={(e) => {
                 setSelectedWorker(e.target.value);
-                setMessage(null);
                 setPhoneLast4("");
+                setMessage(null);
               }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">-- 이름을 선택하세요 --</option>
               {workers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
+                <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
           </div>
@@ -147,14 +141,26 @@ export default function HomePage() {
               type="tel"
               maxLength={4}
               value={phoneLast4}
-              onChange={(e) => setPhoneLast4(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) => {
+                setPhoneLast4(e.target.value.replace(/\D/g, ""));
+                setMessage(null);
+              }}
               placeholder="예: 1234"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full border rounded-lg px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-2 transition-colors ${
+                phoneWrong
+                  ? "border-red-400 focus:ring-red-400"
+                  : phoneVerified
+                  ? "border-green-400 focus:ring-green-400"
+                  : "border-gray-300 focus:ring-blue-500"
+              }`}
             />
+            {phoneWrong && (
+              <p className="text-red-500 text-xs mt-1">전화번호가 일치하지 않습니다.</p>
+            )}
           </div>
 
-          {/* Today status */}
-          {currentWorker && phoneLast4.length === 4 && (
+          {/* 출퇴근 현황 — 전화번호 인증된 경우에만 표시 */}
+          {phoneVerified && (
             <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1.5">
               <p className="font-medium text-gray-700 mb-2">오늘 출퇴근 현황</p>
               <div className="flex justify-between text-gray-600">
@@ -194,17 +200,18 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* 출퇴근 버튼 — 전화번호 인증된 경우에만 활성화 */}
           <div className="flex gap-3">
             <button
               onClick={() => handleAction("checkin")}
-              disabled={loading || !!record?.checkIn}
+              disabled={!phoneVerified || loading || !!record?.checkIn}
               className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               출근
             </button>
             <button
               onClick={() => handleAction("checkout")}
-              disabled={loading || !record?.checkIn || !!record?.checkOut}
+              disabled={!phoneVerified || loading || !record?.checkIn || !!record?.checkOut}
               className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               퇴근
