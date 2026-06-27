@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/yechan/Workspace/commuting-system add -A)",
+      "Bash(git -C /Users/yechan/Workspace/commuting-system commit -m \"feat: add Firebase usage stats to admin, fix type errors\")",
+      "Bash(git -C /Users/yechan/Workspace/commuting-system push)"
+    ]
+  }
+}

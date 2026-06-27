@@ -30,15 +30,17 @@ export default function WorkersPage() {
   const router = useRouter();
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [stats, setStats] = useState<{ workers: number; attendance: number } | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !sessionStorage.getItem("adminAuth")) {
       router.replace("/admin");
     }
     loadWorkers();
+    fetch("/api/admin/stats").then((r) => r.json()).then(setStats);
   }, [router]);
 
   async function loadWorkers() {
@@ -146,6 +148,43 @@ export default function WorkersPage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+        {/* Firebase 사용량 */}
+        {stats && (
+          <div className={`rounded-xl p-4 text-sm ${stats.attendance > 40000 ? "bg-red-50 border border-red-200" : stats.attendance > 30000 ? "bg-yellow-50 border border-yellow-200" : "bg-white shadow-sm"}`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-semibold text-gray-700">Firebase 무료 사용량</p>
+              <a
+                href="https://console.firebase.google.com/project/farmers-poke/usage"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:underline"
+              >
+                콘솔에서 확인 →
+              </a>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <div className="flex justify-between text-gray-500 text-xs mb-1">
+                  <span>출퇴근 기록 ({stats.attendance.toLocaleString()}개)</span>
+                  <span className="text-gray-400">무료 한도: 1GB 저장</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full ${stats.attendance > 40000 ? "bg-red-500" : stats.attendance > 30000 ? "bg-yellow-400" : "bg-green-400"}`}
+                    style={{ width: `${Math.min((stats.attendance / 50000) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <span>알바생 {stats.workers}명</span>
+                {stats.attendance > 40000 && <span className="text-red-600 font-medium">⚠️ 용량 주의</span>}
+                {stats.attendance > 30000 && stats.attendance <= 40000 && <span className="text-yellow-600 font-medium">⚠️ 용량 경고</span>}
+                {stats.attendance <= 30000 && <span className="text-green-600">정상</span>}
+              </div>
+            </div>
+          </div>
+        )}
+
         {!showForm && (
           <button
             onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm); }}
