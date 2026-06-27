@@ -39,7 +39,7 @@ export async function GET(req: Request) {
 
   const records = snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data(), worker: workerMap[doc.data().workerId] }))
-    .sort((a, b) => ((a.worker as { name: string })?.name ?? "").localeCompare((b.worker as { name: string })?.name ?? ""));
+    .sort((a, b) => ((a.worker as unknown as { name: string })?.name ?? "").localeCompare((b.worker as unknown as { name: string })?.name ?? ""));
 
   return NextResponse.json(records);
 }
