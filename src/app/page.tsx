@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatTime } from "@/lib/utils";
+import { formatTime, calcWorkedMinutes, formatMinutes } from "@/lib/utils";
 
 interface Worker {
-  id: number;
+  id: string;
   name: string;
   phone: string;
 }
@@ -40,13 +40,13 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedWorker) {
+    if (!selectedWorker || phoneLast4.length !== 4) {
       setRecord(null);
       return;
     }
     fetchRecord();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorker]);
+  }, [selectedWorker, phoneLast4]);
 
   async function fetchRecord() {
     const res = await fetch(`/api/attendance?workerId=${selectedWorker}`);
@@ -72,7 +72,7 @@ export default function HomePage() {
     const res = await fetch(`/api/attendance/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workerId: parseInt(selectedWorker), phoneLast4 }),
+      body: JSON.stringify({ workerId: selectedWorker, phoneLast4 }),
     });
 
     const data = await res.json();
@@ -84,14 +84,14 @@ export default function HomePage() {
     }
 
     setMessage({
-      text: action === "checkin" ? "출근 처리 완료!" : "퇴근 처리 완료!",
+      text: action === "checkin" ? "출근되었습니다." : "퇴근되었습니다.",
       type: "success",
     });
     setPhoneLast4("");
     fetchRecord();
   }
 
-  const currentWorker = workers.find((w) => w.id === parseInt(selectedWorker));
+  const currentWorker = workers.find((w) => w.id === selectedWorker);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -108,10 +108,10 @@ export default function HomePage() {
 
       {/* Clock */}
       <div className="text-center mt-8">
-        <p className="text-gray-500 text-sm">
+        <p className="text-gray-500 text-sm" suppressHydrationWarning>
           {now.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "long" })}
         </p>
-        <p className="text-5xl font-mono font-bold text-gray-800 mt-1">
+        <p className="text-5xl font-mono font-bold text-gray-800 mt-1" suppressHydrationWarning>
           {now.toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </p>
       </div>
@@ -154,8 +154,8 @@ export default function HomePage() {
           </div>
 
           {/* Today status */}
-          {currentWorker && (
-            <div className="bg-gray-50 rounded-lg p-4 text-sm">
+          {currentWorker && phoneLast4.length === 4 && (
+            <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1.5">
               <p className="font-medium text-gray-700 mb-2">오늘 출퇴근 현황</p>
               <div className="flex justify-between text-gray-600">
                 <span>출근</span>
@@ -163,12 +163,22 @@ export default function HomePage() {
                   {record?.checkIn ? formatTime(record.checkIn) : "미출근"}
                 </span>
               </div>
-              <div className="flex justify-between text-gray-600 mt-1">
+              <div className="flex justify-between text-gray-600">
                 <span>퇴근</span>
                 <span className={record?.checkOut ? "text-green-600 font-medium" : "text-gray-400"}>
                   {record?.checkOut ? formatTime(record.checkOut) : "미퇴근"}
                 </span>
               </div>
+              {record?.checkIn && (
+                <div className="flex justify-between text-gray-600 border-t border-gray-200 pt-1.5 mt-1.5">
+                  <span>일한 총 시간</span>
+                  <span className="text-gray-800 font-semibold">
+                    {record.checkOut
+                      ? formatMinutes(calcWorkedMinutes(record.checkIn, record.checkOut))
+                      : formatMinutes(calcWorkedMinutes(record.checkIn, now.toISOString()))}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

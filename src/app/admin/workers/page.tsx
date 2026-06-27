@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface Worker {
-  id: number;
+  id: string;
   name: string;
   phone: string;
   hourlyWage: number;
@@ -87,7 +87,7 @@ export default function WorkersPage() {
     loadWorkers();
   }
 
-  async function handleDelete(id: number, name: string) {
+  async function handleDelete(id: string, name: string) {
     if (!confirm(`${name} 알바생을 삭제하시겠습니까? 출퇴근 기록도 모두 삭제됩니다.`)) return;
     await fetch(`/api/workers/${id}`, { method: "DELETE" });
     loadWorkers();

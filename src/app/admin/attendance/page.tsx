@@ -13,7 +13,7 @@ import {
 } from "@/lib/utils";
 
 interface Worker {
-  id: number;
+  id: string;
   name: string;
   phone: string;
   hourlyWage: number;
@@ -23,7 +23,7 @@ interface Worker {
 }
 
 interface AttendanceRecord {
-  id: number;
+  id: string;
   date: string;
   checkIn: string | null;
   checkOut: string | null;

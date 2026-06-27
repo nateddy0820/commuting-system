@@ -13,14 +13,16 @@ export async function GET(req: Request) {
   if (workerId) {
     const snap = await db.collection("attendance")
       .where("workerId", "==", workerId)
-      .orderBy("date", "desc")
-      .limit(30)
       .get();
 
     const workerDoc = await db.collection("workers").doc(workerId).get();
     const worker = { id: workerId, ...workerDoc.data() };
 
-    const records = snap.docs.map((doc) => ({ id: doc.id, ...doc.data(), worker }));
+    const records = snap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data(), worker }))
+      .sort((a, b) => (b.date as string).localeCompare(a.date as string))
+      .slice(0, 30);
+
     return NextResponse.json(records);
   }
 
