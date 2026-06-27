@@ -18,9 +18,10 @@ export async function GET(req: Request) {
     const workerDoc = await db.collection("workers").doc(workerId).get();
     const worker = { id: workerId, ...workerDoc.data() };
 
-    const records = snap.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() as Record<string, unknown>, worker }))
-      .sort((a, b) => ((b.date as string) ?? "").localeCompare((a.date as string) ?? ""))
+    type AttRecord = Record<string, unknown> & { id: string; date: string; worker: unknown };
+    const records: AttRecord[] = snap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>), worker }) as AttRecord)
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, 30);
 
     return NextResponse.json(records);
