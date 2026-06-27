@@ -33,13 +33,13 @@ export async function GET(req: Request) {
   const workerDocs = await Promise.all(
     workerIds.map((wid) => db.collection("workers").doc(wid).get())
   );
-  const workerMap = Object.fromEntries(
+  const workerMap: Record<string, Record<string, unknown>> = Object.fromEntries(
     workerDocs.map((d) => [d.id, { id: d.id, ...d.data() }])
   );
 
   const records = snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data(), worker: workerMap[doc.data().workerId] }))
-    .sort((a, b) => ((a.worker as unknown as { name: string })?.name ?? "").localeCompare((b.worker as unknown as { name: string })?.name ?? ""));
+    .sort((a, b) => ((a.worker?.name as string) ?? "").localeCompare((b.worker?.name as string) ?? ""));
 
   return NextResponse.json(records);
 }
