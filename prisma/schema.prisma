@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Worker {
+  id           Int                @id @default(autoincrement())
+  name         String
+  phone        String
+  hourlyWage   Int                @default(10030)
+  startTime    String             @default("09:00")
+  endTime      String             @default("18:00")
+  breakMinutes Int                @default(60)
+  workDays     String             @default("")
+  createdAt    DateTime           @default(now())
+  attendance   AttendanceRecord[]
+}
+
+model AttendanceRecord {
+  id        Int       @id @default(autoincrement())
+  date      String
+  checkIn   DateTime?
+  checkOut  DateTime?
+  workerId  Int
+  worker    Worker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([date, workerId])
+}
+
+model AdminSettings {
+  id       Int    @id @default(1)
+  password String @default("admin1234")
+}
