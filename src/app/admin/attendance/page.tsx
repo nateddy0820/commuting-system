@@ -303,13 +303,8 @@ function toLocalDatetimeValue(iso: string | null): string {
 }
 
 function fromLocalDatetimeValue(val: string): string {
-  // datetime-local value는 KST 기준이므로 UTC로 변환
-  const [datePart, timePart] = val.split("T");
-  const [y, m, d] = datePart.split("-").map(Number);
-  const [h, min] = timePart.split(":").map(Number);
-  const kstDate = new Date(y, m - 1, d, h, min);
-  const utcMs = kstDate.getTime() - 9 * 60 * 60 * 1000;
-  return new Date(utcMs).toISOString();
+  // datetime-local 값(KST)에 +09:00 붙여서 ISO 변환
+  return new Date(`${val}:00+09:00`).toISOString();
 }
 
 function RecordCard({

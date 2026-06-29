@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const doc = await db.collection("workers").doc(id).get();
+  if (!doc.exists) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json({ id, ...doc.data() });
+}
+
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
