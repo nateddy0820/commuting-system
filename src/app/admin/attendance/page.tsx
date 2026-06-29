@@ -404,6 +404,12 @@ function RecordCard({
   onUpdate: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm("이 기록을 삭제하시겠습니까?")) return;
+    await fetch(`/api/attendance/${r.id}`, { method: "DELETE" });
+    onUpdate();
+  }
   const [checkInTime, setCheckInTime] = useState(toTimeValue(r.checkIn));
   const [checkOutTime, setCheckOutTime] = useState(toTimeValue(r.checkOut));
   const [saving, setSaving] = useState(false);
@@ -445,6 +451,14 @@ function RecordCard({
           >
             {editing ? "취소" : "수정"}
           </button>
+          {!editing && (
+            <button
+              onClick={handleDelete}
+              className="text-xs bg-red-50 text-red-500 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
+            >
+              삭제
+            </button>
+          )}
         </div>
       </div>
 

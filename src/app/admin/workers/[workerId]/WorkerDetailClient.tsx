@@ -181,6 +181,7 @@ export default function WorkerDetailClient({ workerId }: { workerId: string }) {
   // edit form state
   const [editForm, setEditForm] = useState<{ name: string; phone: string; hourlyWage: number; schedules: Schedule[] } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     if (!sessionStorage.getItem("adminAuth")) router.replace("/admin");
@@ -218,6 +219,7 @@ export default function WorkerDetailClient({ workerId }: { workerId: string }) {
   async function handleSave() {
     if (!editForm) return;
     setSaving(true);
+    setSaveMsg(null);
     const res = await fetch(`/api/workers/${workerId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -227,6 +229,10 @@ export default function WorkerDetailClient({ workerId }: { workerId: string }) {
     if (res.ok) {
       const w = await res.json();
       setWorker(w);
+      setSaveMsg({ text: "저장 완료!", ok: true });
+      setTimeout(() => setSaveMsg(null), 2000);
+    } else {
+      setSaveMsg({ text: "저장 실패. 다시 시도해주세요.", ok: false });
     }
   }
 
@@ -494,6 +500,11 @@ export default function WorkerDetailClient({ workerId }: { workerId: string }) {
               </div>
             </div>
 
+            {saveMsg && (
+              <p className={`text-sm text-center rounded-lg py-2 ${saveMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                {saveMsg.text}
+              </p>
+            )}
             <button
               onClick={handleSave}
               disabled={saving}
