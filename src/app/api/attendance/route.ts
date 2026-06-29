@@ -73,3 +73,32 @@ export async function GET(req: Request) {
 
   return NextResponse.json(records);
 }
+
+export async function POST(req: Request) {
+  const { workerId, date, checkIn, checkOut } = await req.json();
+
+  if (!workerId || !date) {
+    return NextResponse.json({ error: "workerId와 date는 필수입니다." }, { status: 400 });
+  }
+
+  // 같은 날 중복 체크
+  const existing = await db.collection("attendance")
+    .where("workerId", "==", workerId)
+    .where("date", "==", date)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) {
+    return NextResponse.json({ error: "해당 날짜에 이미 기록이 있습니다." }, { status: 409 });
+  }
+
+  const ref = await db.collection("attendance").add({
+    workerId,
+    date,
+    checkIn: checkIn || null,
+    checkOut: checkOut || null,
+    createdAt: new Date().toISOString(),
+  });
+
+  return NextResponse.json({ id: ref.id }, { status: 201 });
+}

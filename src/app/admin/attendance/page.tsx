@@ -69,6 +69,9 @@ export default function AttendancePage() {
   const [selectedDate, setSelectedDate] = useState(() =>
     new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
   );
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState({ workerId: "", checkIn: "", checkOut: "" });
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !sessionStorage.getItem("adminAuth")) {
@@ -94,6 +97,29 @@ export default function AttendancePage() {
   useEffect(() => {
     loadRecords();
   }, [loadRecords]);
+
+  async function handleAddRecord(e: React.FormEvent) {
+    e.preventDefault();
+    setAddError(null);
+    const res = await fetch("/api/attendance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workerId: addForm.workerId,
+        date: selectedDate,
+        checkIn: addForm.checkIn ? new Date(`${selectedDate}T${addForm.checkIn}:00+09:00`).toISOString() : null,
+        checkOut: addForm.checkOut ? new Date(`${selectedDate}T${addForm.checkOut}:00+09:00`).toISOString() : null,
+      }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      setAddError(d.error);
+      return;
+    }
+    setAddForm({ workerId: "", checkIn: "", checkOut: "" });
+    setShowAddForm(false);
+    loadRecords();
+  }
 
   // 날짜별 뷰: 총 인원/급여 요약
   const dailyTotalPay = records.reduce((sum, r) => {
@@ -210,6 +236,67 @@ export default function AttendancePage() {
               <p className="text-2xl font-bold">{dailyTotalPay.toLocaleString()}원</p>
             </div>
           </div>
+        )}
+
+        {/* 날짜별 기록 추가 */}
+        {viewMode === "daily" && (
+          showAddForm ? (
+            <div className="bg-white rounded-xl shadow-sm p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-3">기록 추가 ({selectedDate})</p>
+              <form onSubmit={handleAddRecord} className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">알바생</label>
+                  <select
+                    required
+                    value={addForm.workerId}
+                    onChange={(e) => setAddForm({ ...addForm, workerId: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- 선택 --</option>
+                    {workers.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">출근 시간</label>
+                    <input
+                      type="time"
+                      value={addForm.checkIn}
+                      onChange={(e) => setAddForm({ ...addForm, checkIn: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">퇴근 시간</label>
+                    <input
+                      type="time"
+                      value={addForm.checkOut}
+                      onChange={(e) => setAddForm({ ...addForm, checkOut: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                {addError && <p className="text-xs text-red-500">{addError}</p>}
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors">
+                    저장
+                  </button>
+                  <button type="button" onClick={() => { setShowAddForm(false); setAddError(null); }} className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">
+                    취소
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="w-full bg-white border border-dashed border-gray-300 text-gray-500 py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors"
+            >
+              + 기록 추가
+            </button>
+          )
         )}
 
         {/* 날짜별 레코드 */}
