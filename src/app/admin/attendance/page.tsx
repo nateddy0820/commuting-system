@@ -10,6 +10,12 @@ import {
   isLate,
   getScheduledMinutes,
   calcOvertimeMinutes,
+  toSchedules,
+  getScheduleForDay,
+  getWeeklyScheduledMinutes,
+  calcJuhuSuDang,
+  getMondayOfWeek,
+  Schedule,
 } from "@/lib/utils";
 
 interface Worker {
@@ -17,9 +23,11 @@ interface Worker {
   name: string;
   phone: string;
   hourlyWage: number;
-  startTime: string;
-  endTime: string;
-  breakMinutes: number;
+  schedules?: Schedule[];
+  workDays?: string;
+  startTime?: string;
+  endTime?: string;
+  breakMinutes?: number;
 }
 
 interface AttendanceRecord {
@@ -27,8 +35,29 @@ interface AttendanceRecord {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
-  workerId: number;
+  workerId: string;
   worker: Worker;
+}
+
+interface WeekGroup {
+  monday: string;
+  sunday: string;
+  records: AttendanceRecord[];
+  totalWorkedMins: number;
+  totalPay: number;
+  juhuSuDang: number;
+}
+
+function getSunday(mondayStr: string): string {
+  const [y, m, d] = mondayStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + 6);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateShort(dateStr: string): string {
+  const [, m, d] = dateStr.split("-").map(Number);
+  return `${m}/${d}`;
 }
 
 export default function AttendancePage() {
@@ -67,10 +96,48 @@ export default function AttendancePage() {
     setRecords(await res.json());
   }
 
-  const totalPay = records.reduce((sum, r) => {
-    const worked = calcWorkedMinutes(r.checkIn, r.checkOut, r.worker.breakMinutes);
+  // 날짜별 뷰: 총 인원/급여 요약
+  const dailyTotalPay = records.reduce((sum, r) => {
+    const schedules = toSchedules(r.worker as unknown as Record<string, unknown>);
+    const sched = getScheduleForDay(schedules, r.date);
+    const worked = calcWorkedMinutes(r.checkIn, r.checkOut, sched?.breakMinutes ?? 0);
     return sum + calcPay(worked, r.worker.hourlyWage);
   }, 0);
+
+  // 알바생별 뷰: 주별로 그룹핑
+  const weekGroups: WeekGroup[] = (() => {
+    if (viewMode !== "worker" || records.length === 0) return [];
+    const worker = workers.find((w) => w.id === selectedWorker);
+    if (!worker) return [];
+    const schedules = toSchedules(worker as unknown as Record<string, unknown>);
+    const weeklyScheduledMins = getWeeklyScheduledMinutes(schedules);
+
+    const grouped: Record<string, AttendanceRecord[]> = {};
+    records.forEach((r) => {
+      const monday = getMondayOfWeek(r.date);
+      if (!grouped[monday]) grouped[monday] = [];
+      grouped[monday].push(r);
+    });
+
+    return Object.entries(grouped)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([monday, recs]) => {
+        const totalWorkedMins = recs.reduce((sum, r) => {
+          const sched = getScheduleForDay(schedules, r.date);
+          return sum + calcWorkedMinutes(r.checkIn, r.checkOut, sched?.breakMinutes ?? 0);
+        }, 0);
+        const totalPay = calcPay(totalWorkedMins, worker.hourlyWage);
+        const juhuSuDang = calcJuhuSuDang(weeklyScheduledMins, worker.hourlyWage);
+        return {
+          monday,
+          sunday: getSunday(monday),
+          records: recs.sort((a, b) => a.date.localeCompare(b.date)),
+          totalWorkedMins,
+          totalPay,
+          juhuSuDang,
+        };
+      });
+  })();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -84,7 +151,7 @@ export default function AttendancePage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
-        {/* View mode toggle */}
+        {/* 뷰 모드 토글 */}
         <div className="flex gap-2 bg-white rounded-xl shadow-sm p-1">
           <button
             onClick={() => setViewMode("daily")}
@@ -104,7 +171,6 @@ export default function AttendancePage() {
           </button>
         </div>
 
-        {/* Filters */}
         {viewMode === "daily" && (
           <div className="bg-white rounded-xl shadow-sm p-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">날짜 선택</label>
@@ -133,8 +199,8 @@ export default function AttendancePage() {
           </div>
         )}
 
-        {/* Summary */}
-        {records.length > 0 && (
+        {/* 날짜별 요약 */}
+        {viewMode === "daily" && records.length > 0 && (
           <div className="bg-blue-600 text-white rounded-xl shadow-md p-4 grid grid-cols-2 gap-4 text-center">
             <div>
               <p className="text-blue-200 text-xs">총 인원</p>
@@ -142,68 +208,131 @@ export default function AttendancePage() {
             </div>
             <div>
               <p className="text-blue-200 text-xs">총 급여</p>
-              <p className="text-2xl font-bold">{totalPay.toLocaleString()}원</p>
+              <p className="text-2xl font-bold">{dailyTotalPay.toLocaleString()}원</p>
             </div>
           </div>
         )}
 
-        {/* Records */}
-        <div className="space-y-3">
-          {records.length === 0 && (
-            <div className="text-center text-gray-400 py-12 bg-white rounded-2xl shadow-md">
-              기록이 없습니다.
-            </div>
-          )}
-          {records.map((r) => {
-            const worked = calcWorkedMinutes(r.checkIn, r.checkOut, r.worker.breakMinutes);
-            const pay = calcPay(worked, r.worker.hourlyWage);
-            const late = isLate(r.checkIn, r.worker.startTime);
-            const scheduled = getScheduledMinutes(r.worker.startTime, r.worker.endTime, r.worker.breakMinutes);
-            const overtime = calcOvertimeMinutes(r.checkOut, r.worker.endTime, worked, scheduled);
+        {/* 날짜별 레코드 */}
+        {viewMode === "daily" && (
+          <div className="space-y-3">
+            {records.length === 0 && (
+              <div className="text-center text-gray-400 py-12 bg-white rounded-2xl shadow-md">기록이 없습니다.</div>
+            )}
+            {records.map((r) => {
+              const schedules = toSchedules(r.worker as unknown as Record<string, unknown>);
+              const sched = getScheduleForDay(schedules, r.date);
+              const worked = calcWorkedMinutes(r.checkIn, r.checkOut, sched?.breakMinutes ?? 0);
+              const pay = calcPay(worked, r.worker.hourlyWage);
+              const late = isLate(r.checkIn, sched?.startTime ?? "09:00");
+              const scheduled = getScheduledMinutes(sched?.startTime ?? "09:00", sched?.endTime ?? "18:00", sched?.breakMinutes ?? 0);
+              const overtime = calcOvertimeMinutes(r.checkOut, sched?.endTime ?? "18:00", worked, scheduled);
+              return <RecordCard key={r.id} r={r} worked={worked} pay={pay} late={late} overtime={overtime} showDate={false} />;
+            })}
+          </div>
+        )}
 
-            return (
-              <div key={r.id} className="bg-white rounded-2xl shadow-md p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold text-gray-800">{r.worker.name}</p>
-                      {late && (
-                        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">지각</span>
-                      )}
-                      {overtime > 0 && (
-                        <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">초과 {formatMinutes(overtime)}</span>
-                      )}
+        {/* 알바생별 주간 그룹 */}
+        {viewMode === "worker" && (
+          <div className="space-y-5">
+            {weekGroups.length === 0 && (
+              <div className="text-center text-gray-400 py-12 bg-white rounded-2xl shadow-md">
+                {selectedWorker ? "기록이 없습니다." : "알바생을 선택하세요."}
+              </div>
+            )}
+            {weekGroups.map((wg) => {
+              const worker = workers.find((w) => w.id === selectedWorker);
+              const schedules = worker ? toSchedules(worker as unknown as Record<string, unknown>) : [];
+              return (
+                <div key={wg.monday} className="space-y-2">
+                  {/* 주간 헤더 */}
+                  <div className="bg-white rounded-xl shadow-sm p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="font-bold text-gray-700">
+                        {formatDateShort(wg.monday)} ~ {formatDateShort(wg.sunday)}주
+                      </p>
+                      <span className="text-xs text-gray-400">{formatMinutes(wg.totalWorkedMins)} 근무</span>
                     </div>
-                    {viewMode === "worker" && (
-                      <p className="text-xs text-gray-400">{r.date}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-blue-50 rounded-lg p-3 text-center">
+                        <p className="text-blue-400 text-xs mb-0.5">근무 급여</p>
+                        <p className="text-blue-700 font-bold">{wg.totalPay.toLocaleString()}원</p>
+                      </div>
+                      <div className={`rounded-lg p-3 text-center ${wg.juhuSuDang > 0 ? "bg-purple-50" : "bg-gray-50"}`}>
+                        <p className={`text-xs mb-0.5 ${wg.juhuSuDang > 0 ? "text-purple-400" : "text-gray-400"}`}>주휴수당</p>
+                        <p className={`font-bold ${wg.juhuSuDang > 0 ? "text-purple-700" : "text-gray-400"}`}>
+                          {wg.juhuSuDang > 0 ? `${wg.juhuSuDang.toLocaleString()}원` : "해당없음"}
+                        </p>
+                      </div>
+                    </div>
+                    {wg.juhuSuDang > 0 && (
+                      <div className="mt-3 bg-purple-50 rounded-lg px-3 py-2 flex justify-between text-sm">
+                        <span className="text-purple-600 font-medium">이번 주 합계</span>
+                        <span className="text-purple-800 font-bold">{(wg.totalPay + wg.juhuSuDang).toLocaleString()}원</span>
+                      </div>
                     )}
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-blue-600">{pay.toLocaleString()}원</p>
-                    <p className="text-xs text-gray-400">{r.worker.hourlyWage.toLocaleString()}원/시</p>
+
+                  {/* 해당 주 일별 기록 */}
+                  <div className="space-y-2 pl-2">
+                    {wg.records.map((r) => {
+                      const sched = getScheduleForDay(schedules, r.date);
+                      const worked = calcWorkedMinutes(r.checkIn, r.checkOut, sched?.breakMinutes ?? 0);
+                      const pay = calcPay(worked, r.worker.hourlyWage);
+                      const late = isLate(r.checkIn, sched?.startTime ?? "09:00");
+                      const scheduled = getScheduledMinutes(sched?.startTime ?? "09:00", sched?.endTime ?? "18:00", sched?.breakMinutes ?? 0);
+                      const overtime = calcOvertimeMinutes(r.checkOut, sched?.endTime ?? "18:00", worked, scheduled);
+                      return <RecordCard key={r.id} r={r} worked={worked} pay={pay} late={late} overtime={overtime} showDate />;
+                    })}
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-gray-400 text-xs">출근</p>
-                    <p className={`font-semibold ${late ? "text-red-600" : "text-gray-700"}`}>
-                      {formatTime(r.checkIn)}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-gray-400 text-xs">퇴근</p>
-                    <p className="font-semibold text-gray-700">{formatTime(r.checkOut)}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-gray-400 text-xs">근무 시간</p>
-                    <p className="font-semibold text-gray-700">
-                      {r.checkOut ? formatMinutes(worked) : "-"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecordCard({
+  r, worked, pay, late, overtime, showDate,
+}: {
+  r: AttendanceRecord;
+  worked: number;
+  pay: number;
+  late: boolean;
+  overtime: number;
+  showDate: boolean;
+}) {
+  return (
+    <div className="bg-white rounded-2xl shadow-md p-5">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="font-bold text-gray-800">{r.worker.name}</p>
+            {late && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">지각</span>}
+            {overtime > 0 && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">초과 {formatMinutes(overtime)}</span>}
+          </div>
+          {showDate && <p className="text-xs text-gray-400 mt-0.5">{r.date}</p>}
+        </div>
+        <div className="text-right">
+          <p className="font-bold text-blue-600">{pay.toLocaleString()}원</p>
+          <p className="text-xs text-gray-400">{r.worker.hourlyWage.toLocaleString()}원/시</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-sm">
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-gray-400 text-xs">출근</p>
+          <p className={`font-semibold ${late ? "text-red-600" : "text-gray-700"}`}>{formatTime(r.checkIn)}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-gray-400 text-xs">퇴근</p>
+          <p className="font-semibold text-gray-700">{formatTime(r.checkOut)}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2 text-center">
+          <p className="text-gray-400 text-xs">근무 시간</p>
+          <p className="font-semibold text-gray-700">{r.checkOut ? formatMinutes(worked) : "-"}</p>
         </div>
       </div>
     </div>

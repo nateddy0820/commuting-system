@@ -4,10 +4,13 @@ import { db } from "@/lib/firebase";
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const { name, phone, hourlyWage, startTime, endTime, breakMinutes, workDays } = body;
+  const { name, phone, hourlyWage, schedules } = body;
 
   await db.collection("workers").doc(id).update({
-    name, phone, hourlyWage, startTime, endTime, breakMinutes, workDays,
+    name,
+    phone,
+    hourlyWage,
+    schedules: schedules ?? [],
   });
 
   const doc = await db.collection("workers").doc(id).get();

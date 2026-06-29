@@ -9,7 +9,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { name, phone, startTime, endTime, breakMinutes, workDays } = body;
+  const { name, phone, hourlyWage, schedules } = body;
 
   if (!name || !phone) {
     return NextResponse.json({ error: "이름과 전화번호는 필수입니다." }, { status: 400 });
@@ -18,11 +18,8 @@ export async function POST(req: Request) {
   const ref = await db.collection("workers").add({
     name,
     phone,
-    hourlyWage: body.hourlyWage ?? 10030,
-    startTime: startTime ?? "09:00",
-    endTime: endTime ?? "18:00",
-    breakMinutes: breakMinutes ?? 60,
-    workDays: workDays ?? "",
+    hourlyWage: hourlyWage ?? 10030,
+    schedules: schedules ?? [],
     createdAt: new Date().toISOString(),
   });
 

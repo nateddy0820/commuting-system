@@ -2,28 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Schedule, toSchedules, getWeeklyScheduledMinutes, calcJuhuSuDang, formatMinutes, getScheduledMinutes } from "@/lib/utils";
 
 interface Worker {
   id: string;
   name: string;
   phone: string;
   hourlyWage: number;
-  startTime: string;
-  endTime: string;
-  breakMinutes: number;
-  workDays: string;
+  schedules?: Schedule[];
+  // legacy fields
+  workDays?: string;
+  startTime?: string;
+  endTime?: string;
+  breakMinutes?: number;
 }
 
 const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
+const emptySchedule: Schedule = { days: [], startTime: "09:00", endTime: "18:00", breakMinutes: 0 };
 
 const emptyForm = {
   name: "",
   phone: "",
   hourlyWage: 10030,
-  startTime: "09:00",
-  endTime: "18:00",
-  breakMinutes: 60,
-  workDays: "",
+  schedules: [{ ...emptySchedule }],
 };
 
 export default function WorkersPage() {
@@ -55,12 +57,30 @@ export default function WorkersPage() {
     return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   }
 
-  function toggleDay(day: string) {
-    const current = form.workDays ? form.workDays.split(",") : [];
-    const next = current.includes(day)
-      ? current.filter((d) => d !== day)
-      : [...current, day];
-    setForm({ ...form, workDays: next.join(",") });
+  function addSchedule() {
+    setForm((f) => ({ ...f, schedules: [...f.schedules, { ...emptySchedule }] }));
+  }
+
+  function removeSchedule(idx: number) {
+    setForm((f) => ({ ...f, schedules: f.schedules.filter((_, i) => i !== idx) }));
+  }
+
+  function toggleDay(schedIdx: number, day: string) {
+    setForm((f) => ({
+      ...f,
+      schedules: f.schedules.map((s, i) => {
+        if (i !== schedIdx) return s;
+        const days = s.days.includes(day) ? s.days.filter((d) => d !== day) : [...s.days, day];
+        return { ...s, days };
+      }),
+    }));
+  }
+
+  function updateSchedule(schedIdx: number, field: keyof Omit<Schedule, "days">, value: string | number) {
+    setForm((f) => ({
+      ...f,
+      schedules: f.schedules.map((s, i) => (i === schedIdx ? { ...s, [field]: value } : s)),
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -100,10 +120,7 @@ export default function WorkersPage() {
       name: w.name,
       phone: w.phone,
       hourlyWage: w.hourlyWage,
-      startTime: w.startTime,
-      endTime: w.endTime,
-      breakMinutes: w.breakMinutes,
-      workDays: w.workDays ?? "",
+      schedules: toSchedules(w as unknown as Record<string, unknown>),
     });
     setEditingId(w.id);
     setShowForm(true);
@@ -116,8 +133,6 @@ export default function WorkersPage() {
     setShowForm(false);
     setMessage(null);
   }
-
-  const selectedDays = form.workDays ? form.workDays.split(",") : [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -136,10 +151,7 @@ export default function WorkersPage() {
             출퇴근 기록
           </button>
           <button
-            onClick={() => {
-              sessionStorage.removeItem("adminAuth");
-              router.push("/admin");
-            }}
+            onClick={() => { sessionStorage.removeItem("adminAuth"); router.push("/admin"); }}
             className="text-sm bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
           >
             로그아웃
@@ -153,12 +165,7 @@ export default function WorkersPage() {
           <div className={`rounded-xl p-4 text-sm ${stats.attendance > 40000 ? "bg-red-50 border border-red-200" : stats.attendance > 30000 ? "bg-yellow-50 border border-yellow-200" : "bg-white shadow-sm"}`}>
             <div className="flex items-center justify-between mb-2">
               <p className="font-semibold text-gray-700">Firebase 무료 사용량</p>
-              <a
-                href="https://console.firebase.google.com/project/farmers-poke/usage"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-500 hover:underline"
-              >
+              <a href="https://console.firebase.google.com/project/farmers-poke/usage" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">
                 콘솔에서 확인 →
               </a>
             </div>
@@ -228,59 +235,87 @@ export default function WorkersPage() {
                 <input
                   type="number"
                   value={form.hourlyWage}
-                  onChange={(e) => setForm({ ...form, hourlyWage: parseInt(e.target.value) })}
+                  onChange={(e) => setForm({ ...form, hourlyWage: parseInt(e.target.value) || 0 })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">근무 요일</label>
-                <div className="flex gap-2">
-                  {DAYS.map((day) => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => toggleDay(day)}
-                      className={`w-9 h-9 rounded-full text-sm font-medium transition-colors ${
-                        selectedDays.includes(day)
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {day}
-                    </button>
-                  ))}
+              {/* 스케줄 슬롯들 */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">근무 스케줄</label>
+                  <button
+                    type="button"
+                    onClick={addSchedule}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    + 스케줄 추가
+                  </button>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">출근 시간</label>
-                  <input
-                    type="time"
-                    value={form.startTime}
-                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">퇴근 시간</label>
-                  <input
-                    type="time"
-                    value={form.endTime}
-                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">휴게(분)</label>
-                  <input
-                    type="number"
-                    value={form.breakMinutes}
-                    onChange={(e) => setForm({ ...form, breakMinutes: parseInt(e.target.value) })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                {form.schedules.map((sched, i) => (
+                  <div key={i} className="border border-gray-200 rounded-xl p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500">스케줄 {i + 1}</span>
+                      {form.schedules.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSchedule(i)}
+                          className="text-xs text-red-500 hover:text-red-600"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex gap-1.5 flex-wrap">
+                      {DAYS.map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleDay(i, day)}
+                          className={`w-9 h-9 rounded-full text-sm font-medium transition-colors ${
+                            sched.days.includes(day)
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">출근</label>
+                        <input
+                          type="time"
+                          value={sched.startTime}
+                          onChange={(e) => updateSchedule(i, "startTime", e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">퇴근</label>
+                        <input
+                          type="time"
+                          value={sched.endTime}
+                          onChange={(e) => updateSchedule(i, "endTime", e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">휴게(분)</label>
+                        <input
+                          type="number"
+                          value={sched.breakMinutes}
+                          onChange={(e) => updateSchedule(i, "breakMinutes", parseInt(e.target.value) || 0)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {message && (
@@ -319,10 +354,12 @@ export default function WorkersPage() {
             </div>
           )}
           {workers.map((w) => {
-            const days = w.workDays ? w.workDays.split(",") : [];
+            const schedules = toSchedules(w as unknown as Record<string, unknown>);
+            const weeklyMins = getWeeklyScheduledMinutes(schedules);
+            const juhu = calcJuhuSuDang(weeklyMins, w.hourlyWage);
             return (
               <div key={w.id} className="bg-white rounded-2xl shadow-md p-5">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-bold text-gray-800 text-lg">{w.name}</p>
                     <p className="text-sm text-gray-500">{w.phone}</p>
@@ -343,37 +380,56 @@ export default function WorkersPage() {
                   </div>
                 </div>
 
-                {days.length > 0 && (
-                  <div className="flex gap-1.5 mt-3">
-                    {DAYS.map((day) => (
-                      <span
-                        key={day}
-                        className={`w-7 h-7 rounded-full text-xs font-medium flex items-center justify-center ${
-                          days.includes(day)
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-gray-50 text-gray-300"
-                        }`}
-                      >
-                        {day}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {/* 스케줄 목록 */}
+                <div className="space-y-2 mb-3">
+                  {schedules.map((s, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-1">
+                          {DAYS.map((day) => (
+                            <span
+                              key={day}
+                              className={`w-6 h-6 rounded-full text-xs font-medium flex items-center justify-center ${
+                                s.days.includes(day) ? "bg-blue-100 text-blue-700" : "text-gray-200"
+                              }`}
+                            >
+                              {day}
+                            </span>
+                          ))}
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {s.startTime} ~ {s.endTime}
+                          {s.breakMinutes > 0 && ` (휴게 ${s.breakMinutes}분)`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-                <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                {/* 시급 / 주간 근무시간 / 주휴수당 */}
+                <div className="grid grid-cols-3 gap-2 text-sm">
                   <div className="bg-gray-50 rounded-lg p-2 text-center">
                     <p className="text-gray-400 text-xs">시급</p>
                     <p className="font-semibold text-gray-700">{w.hourlyWage.toLocaleString()}원</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-gray-400 text-xs">근무 시간</p>
-                    <p className="font-semibold text-gray-700">{w.startTime} ~ {w.endTime}</p>
+                    <p className="text-gray-400 text-xs">주간 소정시간</p>
+                    <p className="font-semibold text-gray-700">{formatMinutes(weeklyMins)}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <p className="text-gray-400 text-xs">휴게</p>
-                    <p className="font-semibold text-gray-700">{w.breakMinutes}분</p>
+                  <div className={`rounded-lg p-2 text-center ${juhu > 0 ? "bg-purple-50" : "bg-gray-50"}`}>
+                    <p className="text-gray-400 text-xs">주휴수당</p>
+                    <p className={`font-semibold ${juhu > 0 ? "text-purple-700" : "text-gray-400"}`}>
+                      {juhu > 0 ? `${juhu.toLocaleString()}원` : "해당없음"}
+                    </p>
                   </div>
                 </div>
+
+                {weeklyMins > 0 && (
+                  <div className="mt-2 text-xs text-gray-400 text-right">
+                    주 {formatMinutes(schedules.reduce((t, s) => t + getScheduledMinutes(s.startTime, s.endTime, s.breakMinutes) * s.days.length, 0))} 근무
+                    {juhu === 0 && weeklyMins < 15 * 60 && " · 주 15시간 미만으로 주휴수당 없음"}
+                  </div>
+                )}
               </div>
             );
           })}
