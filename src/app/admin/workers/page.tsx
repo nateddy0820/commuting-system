@@ -160,7 +160,7 @@ export default function WorkersPage() {
         {showForm && (
           <div className="bg-white rounded-2xl shadow-md p-5">
             <h2 className="text-base font-bold text-gray-800 mb-4">알바생 등록</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">이름 *</label>

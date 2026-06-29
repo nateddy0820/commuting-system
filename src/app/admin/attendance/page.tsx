@@ -243,7 +243,7 @@ export default function AttendancePage() {
           showAddForm ? (
             <div className="bg-white rounded-xl shadow-sm p-4">
               <p className="text-sm font-semibold text-gray-700 mb-3">기록 추가 ({selectedDate})</p>
-              <form onSubmit={handleAddRecord} className="space-y-3">
+              <form onSubmit={handleAddRecord} noValidate className="space-y-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">알바생</label>
                   <select
@@ -381,17 +381,15 @@ export default function AttendancePage() {
   );
 }
 
-function toLocalDatetimeValue(iso: string | null): string {
+function toTimeValue(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   const kst = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${kst.getFullYear()}-${pad(kst.getMonth() + 1)}-${pad(kst.getDate())}T${pad(kst.getHours())}:${pad(kst.getMinutes())}`;
+  return `${String(kst.getHours()).padStart(2, "0")}:${String(kst.getMinutes()).padStart(2, "0")}`;
 }
 
-function fromLocalDatetimeValue(val: string): string {
-  // datetime-local 값(KST)에 +09:00 붙여서 ISO 변환
-  return new Date(`${val}:00+09:00`).toISOString();
+function timeToISO(date: string, time: string): string {
+  return new Date(`${date}T${time}:00+09:00`).toISOString();
 }
 
 function RecordCard({
@@ -406,8 +404,8 @@ function RecordCard({
   onUpdate: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [checkInVal, setCheckInVal] = useState(toLocalDatetimeValue(r.checkIn));
-  const [checkOutVal, setCheckOutVal] = useState(toLocalDatetimeValue(r.checkOut));
+  const [checkInTime, setCheckInTime] = useState(toTimeValue(r.checkIn));
+  const [checkOutTime, setCheckOutTime] = useState(toTimeValue(r.checkOut));
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
@@ -416,8 +414,8 @@ function RecordCard({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        checkIn: checkInVal ? fromLocalDatetimeValue(checkInVal) : null,
-        checkOut: checkOutVal ? fromLocalDatetimeValue(checkOutVal) : null,
+        checkIn: checkInTime ? timeToISO(r.date, checkInTime) : null,
+        checkOut: checkOutTime ? timeToISO(r.date, checkOutTime) : null,
       }),
     });
     setSaving(false);
@@ -442,7 +440,7 @@ function RecordCard({
             <p className="text-xs text-gray-400">{r.worker.hourlyWage.toLocaleString()}원/시</p>
           </div>
           <button
-            onClick={() => { setEditing((v) => !v); setCheckInVal(toLocalDatetimeValue(r.checkIn)); setCheckOutVal(toLocalDatetimeValue(r.checkOut)); }}
+            onClick={() => { setEditing((v) => !v); setCheckInTime(toTimeValue(r.checkIn)); setCheckOutTime(toTimeValue(r.checkOut)); }}
             className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
           >
             {editing ? "취소" : "수정"}
@@ -452,22 +450,23 @@ function RecordCard({
 
       {editing ? (
         <div className="space-y-2">
+          <p className="text-xs text-gray-400 mb-1">{r.date} 기준</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs text-gray-500 mb-1">출근 시간</label>
               <input
-                type="datetime-local"
-                value={checkInVal}
-                onChange={(e) => setCheckInVal(e.target.value)}
+                type="time"
+                value={checkInTime}
+                onChange={(e) => setCheckInTime(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">퇴근 시간</label>
               <input
-                type="datetime-local"
-                value={checkOutVal}
-                onChange={(e) => setCheckOutVal(e.target.value)}
+                type="time"
+                value={checkOutTime}
+                onChange={(e) => setCheckOutTime(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
