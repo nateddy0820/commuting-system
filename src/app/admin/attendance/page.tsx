@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   formatTime,
@@ -77,12 +77,7 @@ export default function AttendancePage() {
     fetch("/api/workers").then((r) => r.json()).then(setWorkers);
   }, [router]);
 
-  useEffect(() => {
-    loadRecords();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedDate, selectedWorker]);
-
-  async function loadRecords() {
+  const loadRecords = useCallback(async () => {
     let url = "/api/attendance";
     if (viewMode === "daily") {
       url += `?date=${selectedDate}`;
@@ -94,7 +89,11 @@ export default function AttendancePage() {
     }
     const res = await fetch(url);
     setRecords(await res.json());
-  }
+  }, [viewMode, selectedDate, selectedWorker]);
+
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
 
   // 날짜별 뷰: 총 인원/급여 요약
   const dailyTotalPay = records.reduce((sum, r) => {
@@ -227,7 +226,7 @@ export default function AttendancePage() {
               const late = isLate(r.checkIn, sched?.startTime ?? "09:00");
               const scheduled = getScheduledMinutes(sched?.startTime ?? "09:00", sched?.endTime ?? "18:00", sched?.breakMinutes ?? 0);
               const overtime = calcOvertimeMinutes(r.checkOut, sched?.endTime ?? "18:00", worked, scheduled);
-              return <RecordCard key={r.id} r={r} worked={worked} pay={pay} late={late} overtime={overtime} showDate={false} />;
+              return <RecordCard key={r.id} r={r} worked={worked} pay={pay} late={late} overtime={overtime} showDate={false} onUpdate={loadRecords} />;
             })}
           </div>
         )}
@@ -282,7 +281,7 @@ export default function AttendancePage() {
                       const late = isLate(r.checkIn, sched?.startTime ?? "09:00");
                       const scheduled = getScheduledMinutes(sched?.startTime ?? "09:00", sched?.endTime ?? "18:00", sched?.breakMinutes ?? 0);
                       const overtime = calcOvertimeMinutes(r.checkOut, sched?.endTime ?? "18:00", worked, scheduled);
-                      return <RecordCard key={r.id} r={r} worked={worked} pay={pay} late={late} overtime={overtime} showDate />;
+                      return <RecordCard key={r.id} r={r} worked={worked} pay={pay} late={late} overtime={overtime} showDate onUpdate={loadRecords} />;
                     })}
                   </div>
                 </div>
@@ -295,8 +294,26 @@ export default function AttendancePage() {
   );
 }
 
+function toLocalDatetimeValue(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const kst = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${kst.getFullYear()}-${pad(kst.getMonth() + 1)}-${pad(kst.getDate())}T${pad(kst.getHours())}:${pad(kst.getMinutes())}`;
+}
+
+function fromLocalDatetimeValue(val: string): string {
+  // datetime-local value는 KST 기준이므로 UTC로 변환
+  const [datePart, timePart] = val.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [h, min] = timePart.split(":").map(Number);
+  const kstDate = new Date(y, m - 1, d, h, min);
+  const utcMs = kstDate.getTime() - 9 * 60 * 60 * 1000;
+  return new Date(utcMs).toISOString();
+}
+
 function RecordCard({
-  r, worked, pay, late, overtime, showDate,
+  r, worked, pay, late, overtime, showDate, onUpdate,
 }: {
   r: AttendanceRecord;
   worked: number;
@@ -304,7 +321,28 @@ function RecordCard({
   late: boolean;
   overtime: number;
   showDate: boolean;
+  onUpdate: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [checkInVal, setCheckInVal] = useState(toLocalDatetimeValue(r.checkIn));
+  const [checkOutVal, setCheckOutVal] = useState(toLocalDatetimeValue(r.checkOut));
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    await fetch(`/api/attendance/${r.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        checkIn: checkInVal ? fromLocalDatetimeValue(checkInVal) : null,
+        checkOut: checkOutVal ? fromLocalDatetimeValue(checkOutVal) : null,
+      }),
+    });
+    setSaving(false);
+    setEditing(false);
+    onUpdate();
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-md p-5">
       <div className="flex items-start justify-between mb-3">
@@ -316,25 +354,66 @@ function RecordCard({
           </div>
           {showDate && <p className="text-xs text-gray-400 mt-0.5">{r.date}</p>}
         </div>
-        <div className="text-right">
-          <p className="font-bold text-blue-600">{pay.toLocaleString()}원</p>
-          <p className="text-xs text-gray-400">{r.worker.hourlyWage.toLocaleString()}원/시</p>
+        <div className="flex items-start gap-3">
+          <div className="text-right">
+            <p className="font-bold text-blue-600">{pay.toLocaleString()}원</p>
+            <p className="text-xs text-gray-400">{r.worker.hourlyWage.toLocaleString()}원/시</p>
+          </div>
+          <button
+            onClick={() => { setEditing((v) => !v); setCheckInVal(toLocalDatetimeValue(r.checkIn)); setCheckOutVal(toLocalDatetimeValue(r.checkOut)); }}
+            className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            {editing ? "취소" : "수정"}
+          </button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-sm">
-        <div className="bg-gray-50 rounded-lg p-2 text-center">
-          <p className="text-gray-400 text-xs">출근</p>
-          <p className={`font-semibold ${late ? "text-red-600" : "text-gray-700"}`}>{formatTime(r.checkIn)}</p>
+
+      {editing ? (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">출근 시간</label>
+              <input
+                type="datetime-local"
+                value={checkInVal}
+                onChange={(e) => setCheckInVal(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">퇴근 시간</label>
+              <input
+                type="datetime-local"
+                value={checkOutVal}
+                onChange={(e) => setCheckOutVal(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full bg-blue-600 text-white py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "저장 중..." : "저장"}
+          </button>
         </div>
-        <div className="bg-gray-50 rounded-lg p-2 text-center">
-          <p className="text-gray-400 text-xs">퇴근</p>
-          <p className="font-semibold text-gray-700">{formatTime(r.checkOut)}</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <div className="bg-gray-50 rounded-lg p-2 text-center">
+            <p className="text-gray-400 text-xs">출근</p>
+            <p className={`font-semibold ${late ? "text-red-600" : "text-gray-700"}`}>{formatTime(r.checkIn)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-2 text-center">
+            <p className="text-gray-400 text-xs">퇴근</p>
+            <p className="font-semibold text-gray-700">{formatTime(r.checkOut)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-2 text-center">
+            <p className="text-gray-400 text-xs">근무 시간</p>
+            <p className="font-semibold text-gray-700">{r.checkOut ? formatMinutes(worked) : "-"}</p>
+          </div>
         </div>
-        <div className="bg-gray-50 rounded-lg p-2 text-center">
-          <p className="text-gray-400 text-xs">근무 시간</p>
-          <p className="font-semibold text-gray-700">{r.checkOut ? formatMinutes(worked) : "-"}</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
