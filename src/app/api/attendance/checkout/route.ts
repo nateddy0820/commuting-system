@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { DocumentReference } from "firebase-admin/firestore";
 
-interface AttDoc {
-  ref: DocumentReference;
-  date: string;
-  checkIn: string | null;
-  checkOut: string | null;
-  workerId: string;
+function getTodayKST(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 }
 
 export async function POST(req: Request) {
@@ -23,27 +18,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "전화번호 뒷자리가 일치하지 않습니다." }, { status: 401 });
   }
 
-  // 날짜 무관, 출근만 찍히고 퇴근 안 된 가장 최근 기록
-  const snap = await db.collection("attendance").where("workerId", "==", workerId).get();
+  const today = getTodayKST();
+  const snap = await db.collection("attendance")
+    .where("workerId", "==", workerId)
+    .where("date", "==", today)
+    .limit(1)
+    .get();
 
-  const unfinished = snap.docs
-    .map((doc): AttDoc => ({
-      ref: doc.ref,
-      date: doc.data().date as string,
-      checkIn: doc.data().checkIn as string | null,
-      checkOut: doc.data().checkOut as string | null,
-      workerId: doc.data().workerId as string,
-    }))
-    .filter((r) => r.checkIn && !r.checkOut)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  if (unfinished.length === 0) {
-    return NextResponse.json({ error: "출근 기록이 없습니다." }, { status: 400 });
+  if (snap.empty || !snap.docs[0].data().checkIn) {
+    return NextResponse.json({ error: "오늘 출근 기록이 없습니다." }, { status: 400 });
   }
 
-  const record = unfinished[0];
-  const now = new Date().toISOString();
-  await record.ref.update({ checkOut: now });
+  if (snap.docs[0].data().checkOut) {
+    return NextResponse.json({ error: "이미 퇴근 처리되었습니다." }, { status: 409 });
+  }
 
-  return NextResponse.json({ id: record.ref.id, ...record, checkOut: now });
+  const now = new Date().toISOString();
+  await snap.docs[0].ref.update({ checkOut: now });
+
+  return NextResponse.json({ id: snap.docs[0].id, ...snap.docs[0].data(), checkOut: now });
 }

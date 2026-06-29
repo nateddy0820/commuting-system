@@ -11,6 +11,8 @@ export async function GET(req: Request) {
   const date = searchParams.get("date");
 
   if (workerId) {
+    const month = searchParams.get("month"); // "YYYY-MM"
+
     const snap = await db.collection("attendance")
       .where("workerId", "==", workerId)
       .get();
@@ -18,7 +20,7 @@ export async function GET(req: Request) {
     const workerDoc = await db.collection("workers").doc(workerId).get();
     const worker = { id: workerId, ...workerDoc.data() };
 
-    const records = snap.docs
+    let records = snap.docs
       .map((doc) => {
         const d = doc.data();
         return {
@@ -31,8 +33,13 @@ export async function GET(req: Request) {
           worker,
         };
       })
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 30);
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    if (month) {
+      records = records.filter((r) => r.date.startsWith(month));
+    } else {
+      records = records.slice(0, 30);
+    }
 
     return NextResponse.json(records);
   }

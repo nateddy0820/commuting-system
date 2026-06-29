@@ -58,6 +58,17 @@ export function getMondayOfWeek(dateStr: string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+export function getSundayOfWeek(mondayStr: string): string {
+  const [y, m, d] = mondayStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + 6);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function calcJuhuPaidMinutes(weeklyScheduledMinutes: number): number {
+  return Math.floor((weeklyScheduledMinutes / 40) * 8);
+}
+
 export function formatTime(date: Date | string | null | undefined): string {
   if (!date) return "-";
   return new Date(date).toLocaleTimeString("ko-KR", {

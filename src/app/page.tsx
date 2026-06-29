@@ -60,17 +60,7 @@ export default function HomePage() {
     const res = await fetch(`/api/attendance?workerId=${selectedWorker}`);
     const data: AttendanceRecord[] = await res.json();
     const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
-
-    // 오늘 기록 우선, 없으면 미퇴근 상태인 가장 최근 기록 사용
-    const todayRecord = data.find((r) => r.date === today);
-    if (todayRecord) {
-      setRecord(todayRecord);
-      return;
-    }
-    const unfinished = data
-      .filter((r) => r.checkIn && !r.checkOut)
-      .sort((a, b) => b.date.localeCompare(a.date));
-    setRecord(unfinished[0] ?? null);
+    setRecord(data.find((r) => r.date === today) ?? null);
   }
 
   async function handleAction(action: "checkin" | "checkout") {
